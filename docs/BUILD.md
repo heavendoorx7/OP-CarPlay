@@ -2,15 +2,15 @@
 
 ## 工具链
 
-本快照使用仓库锁定的版本，未为了开源升级依赖：
+构建环境：
 
 - JDK 25（Gradle daemon toolchain 配置在 `gradle/gradle-daemon-jvm.properties`）
-- Android SDK Platform 37；本地验构使用安装目录 `platforms/android-37.0`
+- Android SDK Platform 37（本地验证使用 `platforms/android-37.0`）
 - Android Build Tools 36.0.0
 - Android NDK 28.2.13676358
 - 仓库 Gradle Wrapper；AGP、Kotlin、AndroidX 等见 `gradle/libs.versions.toml`
 
-设置 `JAVA_HOME`、`ANDROID_HOME`（或 `ANDROID_SDK_ROOT`）。首次需要下载 SDK/依赖，缓存完整后才能 `--offline`。仓库不包含 SDK、JDK 或 Maven 缓存。
+设置 `JAVA_HOME`、`ANDROID_HOME`（或 `ANDROID_SDK_ROOT`）。首次需要下载 SDK/依赖，缓存完整后才能 `--offline`。
 
 ## Debug 与测试
 
@@ -48,9 +48,9 @@ bash scripts/build-p7.sh \
 产物：`mobile/build/outputs/apk/release/mobile-release.apk`。
 密码请通过你自己的安全环境管理，不要写进仓库、日志或提交历史。维护者签名私钥不随源码提供。
 
-## 个人可选认证资源
+## 可选认证资源
 
-只用于你自己的构建时，可设置外部目录：
+设置 `OP_MFI_ASSETS_DIR` 可从外部目录注入认证文件：
 
 ```text
 OP_MFI_ASSETS_DIR/
@@ -59,7 +59,7 @@ OP_MFI_ASSETS_DIR/
     └── identity.pk8
 ```
 
-这会把文件放进 APK，持有 APK 的人即可提取；不要把这样的 APK 当无秘密的公开产物。本仓库 Releases 的 public APK 不包含这两份文件。
+注入的文件可以从 APK 中提取，不适合作为保密存储。发行 APK 未注入这两份文件。
 
 ## 发布前检查
 
@@ -69,3 +69,7 @@ git diff --check
 ```
 
 检查是发布材料筛查，不是完整安全审计。不要提交本机日志、配对数据库、私有密钥、系统 APK 或仪表固件。
+
+## 本地验证
+
+1349 的公开构建：279 项 JVM 用例中 278 项通过，1 项依赖可选认证资源的测试跳过；Release Lint 无错误，Release 构建通过。这些检查不替代实车兼容性与安全验证。

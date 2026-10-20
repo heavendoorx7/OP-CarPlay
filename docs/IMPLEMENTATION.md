@@ -21,7 +21,7 @@ iPhone 地图应用
 
 主屏 type 110 与仪表 type 111 分开。P7 当前配置向 iPhone 请求 1328×664 画布，按 `P7InstrumentFraming` 为高德偏右的锚点取景；仪表输出由原车实时请求控制，本次实车为 660×660、5 fps。不是直接把主屏截成正方形。
 
-`P7ImagePolicy` 检查请求、尺寸、帧率与 JPEG 边界。`InstrumentFrameServer` 和 shell worker 验证 socket 对端身份；worker 只在 E28/API28、既有 shell 身份和可用原车接口条件下运行。它不是通用远程命令服务。
+`P7ImagePolicy` 检查请求、尺寸、帧率与 JPEG 边界。`InstrumentFrameServer` 和 shell worker 验证 socket 对端身份；worker 通过车型标识及 API28 检查，仅在匹配的老款 P7、既有 shell 身份和可用原车接口条件下运行。它不是通用远程命令服务。
 
 `P7NativeMapGuard` / `P7MiniMapLease` 仅管理固定的
 `com.xiaopeng.montecarlo.service.minimap.MiniMapService`。
