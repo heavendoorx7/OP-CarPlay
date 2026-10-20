@@ -1,0 +1,6 @@
+<resources>
+    <bool name="config_advanced_audio_channel_mapping">false</bool>
+    <bool name="config_p7_display_profile">false</bool>
+    <bool name="config_p7_dynamic_viewareas">false</bool>
+    <bool name="config_p7_fast_reconnect">false</bool>
+</resources>

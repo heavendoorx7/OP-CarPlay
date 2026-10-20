@@ -1,0 +1,4 @@
+OP CarPlay 图标：橙色斜切连体 OP、石墨色底。
+由本项目制作，使用用户确认的原始图像。
+SHA256: 25768d21c7c09398d34d70eeaa0b33adff9eb71d5a510bbe887cb4c97a19bfb9
+Android 传统/圆形/自适应入口统一引用此图片；自适应前景使用 XML inset。

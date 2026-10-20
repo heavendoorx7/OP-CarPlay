@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.WRITE_SETTINGS" android:maxSdkVersion="28" />
+
+    <queries>
+        <package android:name="moe.shizuku.privileged.api" />
+    </queries>
+
+    <application>
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:multiprocess="false"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+        <service android:name="com.shilapi.xcertplay.NativeHotspotService"
+            android:exported="false" />
+
+        <provider
+            android:name="com.shilapi.xcertplay.BundledMfiProvider"
+            android:authorities="${applicationId}.bundled-mfi"
+            android:exported="false"
+            android:grantUriPermissions="false" />
+
+        <activity
+            android:name="com.shilapi.xcertplay.OPCarPlayActivity"
+            android:configChanges="density|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:resizeableActivity="true"
+            android:screenOrientation="fullSensor"
+            android:theme="@style/Theme.Xcertplay"
+            android:windowSoftInputMode="adjustResize">
+            <meta-data
+                android:name="com.xiaopeng.metadata.activity.system.ui.flags"
+                android:value="2048" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
+                android:resource="@xml/usb_device_filter" />
+        </activity>
+
+        <activity-alias
+            android:name="com.shilapi.xcertplay.CarPlayHostActivity"
+            android:targetActivity="com.shilapi.xcertplay.OPCarPlayActivity"
+            android:exported="true" />
+
+        <activity
+            android:name="com.shilapi.xcertplay.OPCarPlayBarsActivity"
+            android:configChanges="density|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:resizeableActivity="true"
+            android:screenOrientation="fullSensor"
+            android:theme="@style/Theme.Xcertplay"
+            android:windowSoftInputMode="adjustResize">
+            <meta-data
+                android:name="com.xiaopeng.metadata.activity.system.ui.flags"
+                android:value="0" />
+        </activity>
+
+        <activity
+            android:name="com.shilapi.xcertplay.MainActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Xcertplay" />
+
+        <activity
+            android:name="com.shilapi.xcertplay.ImageCropActivity"
+            android:exported="false"
+            android:screenOrientation="fullSensor"
+            android:theme="@style/Theme.Xcertplay" />
+
+        <receiver
+            android:name="com.shilapi.xcertplay.BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+    </application>
+
+</manifest>

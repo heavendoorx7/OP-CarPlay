@@ -1,0 +1,4 @@
+Official XPENG symbol source: https://xps01.xiaopeng.com/domestic/_next/static/media/black-logo.d7e75b41.svg
+Obtained from https://www.xiaopeng.com/ on 2026-10-04.
+Brand artwork belongs to XPENG. Included for the requested personal head-unit app branding. No endorsement implied.
+Vector geometry preserved; centered on a white square for the CarPlay icon.

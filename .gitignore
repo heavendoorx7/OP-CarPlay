@@ -1,0 +1,48 @@
+# Android Studio and local IDE state
+.idea/
+*.iml
+.vscode/
+
+# Gradle and local tooling
+.gradle/
+.kotlin/
+build/
+local.properties
+
+# Native build output
+.cxx/
+.externalNativeBuild/
+captures/
+
+# Local agent working notes
+agent_docs/
+research/
+
+tools/
+mobile/release/
+mobile/debug/
+
+
+# OS files
+.DS_Store
+Thumbs.db
+*.log
+/.idea
+
+# Never publish deployment credentials, personal captures, or compiled packages.
+dist/
+*.apk
+*.aab
+*.jks
+*.keystore
+*.pk8
+*.p7b
+*.p12
+*.pfx
+*.pem
+.env
+.env.*
+signing.env
+private-mfi-assets/
+__pycache__/
+*.pyc
