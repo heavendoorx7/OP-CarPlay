@@ -237,27 +237,19 @@ open class CarPlayHostActivity : ComponentActivity() {
         }
     private val localMfiCertificatePicker =
         registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-            externalActivityInProgress = false
-            if (uri != null && retainDocumentReadPermission(uri, "certificate")) {
-                if (BundledMfiSelection.assetName(packageName, localMfiPrivateKeyUri) != null) {
-                    localMfiPrivateKeyUri = ""
-                }
-                localMfiCertificateUri = uri.toString()
-                updateLocalMfiDocumentViews()
-                mfiErrorView?.visibility = View.GONE
-            }
+            importLocalMfiDocument(uri, certificate = true)
         }
     private val localMfiPrivateKeyPicker =
         registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-            externalActivityInProgress = false
-            if (uri != null && retainDocumentReadPermission(uri, "private key")) {
-                if (BundledMfiSelection.assetName(packageName, localMfiCertificateUri) != null) {
-                    localMfiCertificateUri = ""
-                }
-                localMfiPrivateKeyUri = uri.toString()
-                updateLocalMfiDocumentViews()
-                mfiErrorView?.visibility = View.GONE
-            }
+            importLocalMfiDocument(uri, certificate = false)
+        }
+    private val localMfiCertificateContentPicker =
+        registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+            importLocalMfiDocument(uri, certificate = true)
+        }
+    private val localMfiPrivateKeyContentPicker =
+        registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+            importLocalMfiDocument(uri, certificate = false)
         }
 
     private var videoView: TextureView? = null
@@ -396,6 +388,9 @@ open class CarPlayHostActivity : ComponentActivity() {
         get() = shuttingDown.get() || !appRunState.isActive(runToken)
     private val mainHandler = Handler(Looper.getMainLooper())
     private val teardownExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+    private val mfiDocumentExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+    private var mfiDocumentImportInProgress = false
+    private var mfiDocumentImportTicket = 0
     private val airPlayCommandExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private val logLines = ScreenLogBuffer(MAX_SCREEN_LOG_LINES)
     private val pendingScreenLogs = ArrayDeque<PendingLog>()
@@ -766,6 +761,7 @@ open class CarPlayHostActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        mfiDocumentExecutor.shutdownNow()
         instrumentController?.close()
         instrumentController = null
         // The decoder follows the background CarPlay session across Activity handoffs.
@@ -1632,6 +1628,8 @@ open class CarPlayHostActivity : ComponentActivity() {
     }
 
     private fun restoreSettingsBaseline() {
+        ++mfiDocumentImportTicket
+        mfiDocumentImportInProgress = false
         val baseline = settingsBaseline ?: return
         loadPersistedSettings()
         nativeHotspotAutoSwitch?.isChecked = nativeHotspotAutoEnabled
@@ -1796,8 +1794,7 @@ open class CarPlayHostActivity : ComponentActivity() {
                     localMfiCertificateUri,
                     onDocumentViewCreated = { localMfiCertificateDocumentView = it },
                 ) {
-                    externalActivityInProgress = true
-                    localMfiCertificatePicker.launch(arrayOf("*/*"))
+                    launchLocalMfiDocumentPicker(certificate = true)
                 },
                 LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
@@ -1810,8 +1807,7 @@ open class CarPlayHostActivity : ComponentActivity() {
                     localMfiPrivateKeyUri,
                     onDocumentViewCreated = { localMfiPrivateKeyDocumentView = it },
                 ) {
-                    externalActivityInProgress = true
-                    localMfiPrivateKeyPicker.launch(arrayOf("*/*"))
+                    launchLocalMfiDocumentPicker(certificate = false)
                 },
                 LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
@@ -1820,7 +1816,7 @@ open class CarPlayHostActivity : ComponentActivity() {
             )
             addView(
                 menuText(
-                    "可使用内置文件，也可分别选择自己的 DER PKCS#7 证书和配套的未加密 DER PKCS#8 私钥。更换时请选齐两份文件，保存后生效。",
+                    "请选择配套的 DER PKCS#7 证书和未加密 DER PKCS#8 私钥。文件将导入应用私有目录，选齐两份后保存生效。",
                     14f,
                     MENU_SECONDARY,
                 ),
@@ -1947,17 +1943,76 @@ open class CarPlayHostActivity : ComponentActivity() {
         }
     }
 
-    private fun retainDocumentReadPermission(uri: Uri, label: String): Boolean = try {
-        contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        true
-    } catch (failure: SecurityException) {
-        Log.e(TAG, "Could not retain local MFi $label document permission", failure)
-        Toast.makeText(
-            this,
-            "无法保留所选${label}的读取权限",
-            Toast.LENGTH_LONG,
-        ).show()
-        false
+    private fun launchLocalMfiDocumentPicker(certificate: Boolean) {
+        if (mfiDocumentImportInProgress) {
+            Toast.makeText(this, "正在读取认证文件，请稍候", Toast.LENGTH_SHORT).show()
+            return
+        }
+        externalActivityInProgress = true
+        try {
+            if (certificate) localMfiCertificatePicker.launch(arrayOf("*/*"))
+            else localMfiPrivateKeyPicker.launch(arrayOf("*/*"))
+        } catch (_: ActivityNotFoundException) {
+            launchLocalMfiContentPicker(certificate)
+        } catch (_: SecurityException) {
+            launchLocalMfiContentPicker(certificate)
+        } catch (failure: RuntimeException) {
+            localMfiPickerUnavailable(failure)
+        }
+    }
+
+    private fun launchLocalMfiContentPicker(certificate: Boolean) {
+        try {
+            if (certificate) localMfiCertificateContentPicker.launch("*/*")
+            else localMfiPrivateKeyContentPicker.launch("*/*")
+        } catch (failure: RuntimeException) {
+            localMfiPickerUnavailable(failure)
+        }
+    }
+
+    private fun localMfiPickerUnavailable(failure: RuntimeException) {
+        externalActivityInProgress = false
+        Log.w(TAG, "Cannot open a local MFi document picker", failure)
+        Toast.makeText(this, "系统没有可用的文件选择器，请先安装支持选择文件的文件管理器", Toast.LENGTH_LONG).show()
+    }
+
+    private fun importLocalMfiDocument(uri: Uri?, certificate: Boolean) {
+        externalActivityInProgress = false
+        if (uri == null || isFinishing || isDestroyed) return
+        mfiDocumentImportInProgress = true
+        val ticket = ++mfiDocumentImportTicket
+        (if (certificate) localMfiCertificateDocumentView else localMfiPrivateKeyDocumentView)?.text = "正在读取文件…"
+        val appContext = applicationContext
+        mfiDocumentExecutor.execute {
+            val result = runCatching {
+                appContext.contentResolver.openInputStream(uri)?.use { input ->
+                    LocalMfiDocumentStore.importDocument(input, LocalMfiDocumentProvider.directory(appContext), certificate)
+                } ?: error("Document could not be opened")
+            }
+            runOnUiThread {
+                if (isFinishing || isDestroyed || ticket != mfiDocumentImportTicket) {
+                    result.getOrNull()?.delete()
+                    return@runOnUiThread
+                }
+                mfiDocumentImportInProgress = false
+                result.fold(onSuccess = { file ->
+                    val imported = LocalMfiDocumentProvider.uri(appContext, file).toString()
+                    if (certificate) {
+                        if (BundledMfiSelection.assetName(packageName, localMfiPrivateKeyUri) != null) localMfiPrivateKeyUri = ""
+                        localMfiCertificateUri = imported
+                    } else {
+                        if (BundledMfiSelection.assetName(packageName, localMfiCertificateUri) != null) localMfiCertificateUri = ""
+                        localMfiPrivateKeyUri = imported
+                    }
+                    mfiErrorView?.visibility = View.GONE
+                }, onFailure = { failure ->
+                    // Do not log document contents or its source URI (the file can be a private key).
+                    Log.w(TAG, "Local MFi document import failed: ${failure.javaClass.simpleName}")
+                    Toast.makeText(this, "无法读取认证文件，请确认文件可访问、非空且不超过 1 MB", Toast.LENGTH_LONG).show()
+                })
+                updateLocalMfiDocumentViews()
+            }
+        }
     }
 
     private fun syncMfiSettingsControls() {
@@ -3117,6 +3172,7 @@ open class CarPlayHostActivity : ComponentActivity() {
 
     private fun validateMfiSettings(): Boolean {
         val error = when {
+            mfiDocumentImportInProgress -> "正在读取认证文件，请稍候"
             mfiTarget == MfiTarget.I2C && mfiI2cPath.isBlank() ->
                 "请填写 I2C 设备路径"
             mfiTarget == MfiTarget.REMOTE && remoteMfiServer.isBlank() ->

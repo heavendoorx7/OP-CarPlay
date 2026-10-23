@@ -10,6 +10,11 @@
 
     <application>
         <provider
+            android:name="com.shilapi.xcertplay.LocalMfiDocumentProvider"
+            android:authorities="${applicationId}.local-mfi"
+            android:exported="false"
+            android:grantUriPermissions="false" />
+        <provider
             android:name="rikka.shizuku.ShizukuProvider"
             android:authorities="${applicationId}.shizuku"
             android:multiprocess="false"

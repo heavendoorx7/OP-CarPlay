@@ -25,7 +25,7 @@ android {
         minSdk = 28
         targetSdk = 37
         // Keep upgrade ordering independent of the public OP CarPlay version.
-        versionCode = if (p7Profile) 1349 else 1303
+        versionCode = if (p7Profile) 1350 else 1303
         // v1.0 is reserved for the final, accepted release. P7 is a vehicle profile.
         versionName = if (p7Profile) "0.7" else "1.3.3"
         manifestPlaceholders["launcherIcon"] = if (p7Profile) "@mipmap/op_launcher" else "@mipmap/ic_launcher"

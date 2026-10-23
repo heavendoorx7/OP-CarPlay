@@ -4,7 +4,7 @@
 
 适配搭载 **高通骁龙 820A 芯片**的老款小鹏 P7（Android 9），支持无线 CarPlay 和原车仪表导航。
 
-**v0.7 · build 1349**
+**v0.7 · build 1350**
 
 [下载 APK](https://github.com/heavendoorx7/OP-CarPlay/releases/latest) · [使用说明](docs/USAGE.md) · [构建指南](docs/BUILD.md) · [技术说明](docs/IMPLEMENTATION.md)
 
