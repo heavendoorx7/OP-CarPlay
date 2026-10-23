@@ -188,44 +188,44 @@ open class CarPlayHostActivity : ComponentActivity() {
         }
     private val locationPermission =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
-            awaitingLocationPermission = false
-            locationPermissionAvailable = hasFineLocationPermission()
-            if (locationPermissionAvailable) {
-                appendLog("Location permission granted")
-            } else if (locationReportingEnabled) {
-                locationReportingEnabled = false
-                if (!menuOpen) {
-                    AirPlayPersistence.saveLocationReportingEnabled(
-                        this@CarPlayHostActivity,
-                        false,
-                    )
-                }
-                locationReportingSwitch?.isChecked = false
-                val approximateOnly =
-                    grants[Manifest.permission.ACCESS_COARSE_LOCATION] == true
-                appendLog(
-                    if (approximateOnly) {
-                        "Precise location permission denied; location reporting disabled"
-                    } else {
-                        "Location permission denied; location reporting disabled"
-                    },
+            completeLocationPermissionRequest(grants)
+        }
+
+    private fun completeLocationPermissionRequest(grants: Map<String, Boolean>) {
+        awaitingLocationPermission = false
+        locationPermissionAvailable = hasFineLocationPermission()
+        if (locationPermissionAvailable) {
+            appendLog("Location permission granted")
+        } else if (locationReportingEnabled) {
+            locationReportingEnabled = false
+            if (!menuOpen) {
+                AirPlayPersistence.saveLocationReportingEnabled(
+                    this@CarPlayHostActivity,
+                    false,
                 )
             }
-            updateResolutionMenu()
-            if (!menuOpen) requestStartupPrerequisites()
+            locationReportingSwitch?.isChecked = false
+            val approximateOnly =
+                grants[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+            appendLog(
+                if (approximateOnly) {
+                    "Precise location permission denied; location reporting disabled"
+                } else {
+                    "Location permission denied; location reporting disabled"
+                },
+            )
         }
+        updateResolutionMenu()
+        if (!menuOpen) requestStartupPrerequisites()
+    }
 
     private val imagePicker =
         registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-            if (uri == null) {
-                externalActivityInProgress = false
-                return@registerForActivityResult
-            }
-            imageCrop.launch(
-                Intent(this, ImageCropActivity::class.java)
-                    .setData(uri)
-                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
-            )
+            cropSelectedImage(uri)
+        }
+    private val imageDocumentPicker =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            cropSelectedImage(uri)
         }
     private val imageCrop =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -498,8 +498,7 @@ open class CarPlayHostActivity : ComponentActivity() {
         ) {
             val bars = P7WindowPreferences.enter(this, savedInstanceState, intent)
             if ((this is OPCarPlayBarsActivity) != bars) {
-                switchP7WindowHost(bars)
-                return
+                if (switchP7WindowHost(bars)) return
             }
         }
         NativeHotspotService.onAppOpen(this)
@@ -548,7 +547,7 @@ open class CarPlayHostActivity : ComponentActivity() {
         } else if (microphonePermissionResolved) {
             requestStartupPrerequisites()
         } else {
-            microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
+            requestMicrophonePermission()
         }
     }
 
@@ -623,12 +622,36 @@ open class CarPlayHostActivity : ComponentActivity() {
     private fun requestLocationPermission() {
         if (locationPermissionAvailable || awaitingLocationPermission) return
         awaitingLocationPermission = true
-        locationPermission.launch(
-            arrayOf(
-                Manifest.permission.ACCESS_FINE_LOCATION,
-                Manifest.permission.ACCESS_COARSE_LOCATION,
-            ),
-        )
+        if (!tryLaunchSystemPage("无法打开位置授权页面，位置共享已关闭") {
+                locationPermission.launch(
+                    arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION),
+                )
+            }) {
+            completeLocationPermissionRequest(emptyMap())
+        }
+    }
+
+    private fun requestMicrophonePermission() {
+        if (!tryLaunchSystemPage("无法打开麦克风授权页面，麦克风暂不可用") {
+                microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
+            }) {
+            microphoneAvailable = false
+            microphonePermissionResolved = true
+            microphoneGainTestAfterPermission = false
+            microphoneLevelValueView?.text = "无法打开麦克风授权页面"
+            requestStartupPrerequisites()
+        }
+    }
+
+    private fun tryLaunchSystemPage(unavailableMessage: String, launch: () -> Unit): Boolean {
+        return try {
+            launch()
+            true
+        } catch (failure: RuntimeException) {
+            Log.w(TAG, "System page unavailable: ${failure.javaClass.simpleName}")
+            Toast.makeText(this, unavailableMessage, Toast.LENGTH_LONG).show()
+            false
+        }
     }
 
     private fun hasFineLocationPermission(): Boolean =
@@ -636,14 +659,31 @@ open class CarPlayHostActivity : ComponentActivity() {
             PackageManager.PERMISSION_GRANTED
 
     private fun requestVpnConsent() {
-        val consent = CarPlayVpnService.prepare(this)
+        val consent = try {
+            CarPlayVpnService.prepare(this)
+        } catch (failure: RuntimeException) {
+            vpnConsentUnavailable(failure)
+            return
+        }
         if (consent == null) {
             vpnReady = true
             maybeStartCarPlay()
         } else {
             awaitingVpnConsent = true
-            vpnConsent.launch(consent)
+            if (!tryLaunchSystemPage("系统 VPN 授权页面不可用，有线连接未启动") { vpnConsent.launch(consent) }) {
+                awaitingVpnConsent = false
+                vpnReady = false
+                setStatus("系统 VPN 授权页面不可用，有线连接未启动")
+            }
         }
+    }
+
+    private fun vpnConsentUnavailable(failure: RuntimeException) {
+        awaitingVpnConsent = false
+        vpnReady = false
+        Log.w(TAG, "VPN preparation unavailable: ${failure.javaClass.simpleName}")
+        setStatus("系统 VPN 服务不可用，有线连接未启动")
+        Toast.makeText(this, "系统 VPN 服务不可用，有线连接未启动", Toast.LENGTH_LONG).show()
     }
 
     private fun requestWirelessPermissions() {
@@ -657,7 +697,14 @@ open class CarPlayHostActivity : ComponentActivity() {
         wirelessPermissionsReady = false
         updateHotspotStatusBlock()
         awaitingWirelessPermissions = true
-        wirelessPermissions.launch(permissions.toTypedArray())
+        if (!tryLaunchSystemPage("无法打开蓝牙或附近设备授权页面，请检查系统设置后重试") {
+                wirelessPermissions.launch(permissions.toTypedArray())
+            }) {
+            awaitingWirelessPermissions = false
+            wirelessPermissionsReady = false
+            updateHotspotStatusBlock()
+            setStatus("无线连接所需权限尚未授权")
+        }
     }
 
     private fun hasRequiredWirelessPermissions(): Boolean =
@@ -2368,7 +2415,7 @@ open class CarPlayHostActivity : ComponentActivity() {
         if (!microphoneAvailable) {
             microphoneGainTestAfterPermission = true
             microphoneLevelValueView?.text = "需要麦克风权限"
-            microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
+            requestMicrophonePermission()
             return
         }
 
@@ -2421,14 +2468,53 @@ open class CarPlayHostActivity : ComponentActivity() {
     }
 
     private fun openSystemBluetoothSettings() {
-        try {
+        tryLaunchSystemPage("系统蓝牙设置不可用，请从原车设置打开") {
             startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
-        } catch (error: ActivityNotFoundException) {
-            appendLog("System Bluetooth settings are unavailable: ${error.message}")
-            Toast.makeText(this, "系统蓝牙设置不可用", Toast.LENGTH_LONG).show()
-        } catch (error: SecurityException) {
-            appendLog("Cannot open system Bluetooth settings: ${error.message}")
-            Toast.makeText(this, "无法打开系统蓝牙设置", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun launchImagePicker() {
+        if (isFinishing || isDestroyed) return
+        externalActivityInProgress = true
+        try {
+            imagePicker.launch("image/*")
+        } catch (_: ActivityNotFoundException) {
+            launchImageDocumentPicker()
+        } catch (_: SecurityException) {
+            launchImageDocumentPicker()
+        } catch (failure: RuntimeException) {
+            imagePickerUnavailable(failure)
+        }
+    }
+
+    private fun launchImageDocumentPicker() {
+        try {
+            imageDocumentPicker.launch(arrayOf("image/*"))
+        } catch (failure: RuntimeException) {
+            imagePickerUnavailable(failure)
+        }
+    }
+
+    private fun imagePickerUnavailable(failure: RuntimeException) {
+        externalActivityInProgress = false
+        Log.w(TAG, "Image picker unavailable: ${failure.javaClass.simpleName}")
+        Toast.makeText(this, "系统没有可用的图片选择器，请先安装支持选择图片的文件管理器", Toast.LENGTH_LONG).show()
+    }
+
+    private fun cropSelectedImage(uri: Uri?) {
+        if (uri == null || isFinishing || isDestroyed) {
+            externalActivityInProgress = false
+            return
+        }
+        externalActivityInProgress = true
+        if (!tryLaunchSystemPage("无法打开图片裁剪页面，原图标已保留") {
+                imageCrop.launch(
+                    Intent(this, ImageCropActivity::class.java)
+                        .setData(uri)
+                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
+                )
+            }) {
+            externalActivityInProgress = false
         }
     }
 
@@ -2534,8 +2620,7 @@ open class CarPlayHostActivity : ComponentActivity() {
                 text = "选择图片"
                 isAllCaps = false
                 setOnClickListener {
-                    externalActivityInProgress = true
-                    imagePicker.launch("image/*")
+                    launchImagePicker()
                 }
             },
             LinearLayout.LayoutParams(
@@ -4671,14 +4756,20 @@ open class CarPlayHostActivity : ComponentActivity() {
         switchP7WindowHost(show)
     }
 
-    private fun switchP7WindowHost(showBars: Boolean) {
-        if (sessionStopped || isFinishing || isDestroyed) return
+    private fun switchP7WindowHost(showBars: Boolean): Boolean {
+        if (sessionStopped || isFinishing || isDestroyed) return false
         val target = if (showBars) OPCarPlayBarsActivity::class.java else OPCarPlayActivity::class.java
-        startActivity(Intent(this, target).putExtra(P7WindowPreferences.MODE_KEY, showBars)
-            .addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION))
+        if (!tryLaunchSystemPage("无法切换显示模式，已保留当前画面") {
+                startActivity(Intent(this, target).putExtra(P7WindowPreferences.MODE_KEY, showBars)
+                    .addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION))
+            }) {
+            P7WindowPreferences.select(this, this is OPCarPlayBarsActivity)
+            return false
+        }
         finish()
         @Suppress("DEPRECATION")
         overridePendingTransition(0, 0)
+        return true
     }
 
     private fun applyFullscreenMode() {

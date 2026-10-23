@@ -127,7 +127,7 @@ class ImageCropActivity : Activity() {
 
     override fun onDestroy() {
         executor.shutdownNow()
-        cropView.bitmap?.recycle()
+        if (::cropView.isInitialized) cropView.bitmap?.recycle()
         super.onDestroy()
     }
 
